@@ -1,0 +1,1036 @@
+<!-- path: ./planet/earth_3d.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Конструктор планет · Nanite + Virtual Textures</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:system-ui,Segoe UI,Roboto,sans-serif}
+  #scene{display:block;width:100%;height:100%}
+  #hud{position:fixed;top:12px;left:12px;width:286px;padding:12px 14px;border:1px solid #24344f;
+       border-radius:10px;background:rgba(5,9,17,.78);backdrop-filter:blur(6px);color:#cfd8ea;font-size:12px;z-index:2;
+       max-height:calc(100vh - 24px);overflow-y:auto}
+  #hud .t{font-weight:700;letter-spacing:.08em;color:#eaf2ff;margin-bottom:8px;font-size:12px}
+  #hud .sec{margin:10px 0 4px;color:#7f96c0;text-transform:uppercase;font-size:10px;letter-spacing:.12em}
+  #hud label{display:flex;align-items:center;gap:7px;margin:3px 0;cursor:pointer}
+  #hud label .cap{flex:1}
+  #hud label b{color:#8fd0ff;font-weight:600;min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  #hud input[type=range]{width:104px;accent-color:#4d9fff}
+  #hud button,#hud select,#hud textarea{width:100%;margin-top:6px;padding:6px 4px;border:1px solid #2a4a7a;
+       border-radius:7px;background:#12233f;color:#bcd6ff;cursor:pointer;font-size:12px}
+  #hud textarea{height:70px;resize:vertical;font-family:monospace;font-size:10px;cursor:text}
+  #qbtns{display:flex;gap:6px}
+  #qbtns button{flex:1;margin-top:0}
+  #qbtns button.on{background:#1d3a66;border-color:#4d9fff;color:#fff}
+  #feed{margin-top:4px;max-height:92px;overflow:hidden;color:#8fb8e8;font-size:10.5px;line-height:1.45}
+  #hint{margin-top:8px;color:#5c6f92;font-size:10.5px}
+  .btn-row{display:flex;gap:4px;margin-top:4px}
+  .btn-row button{flex:1}
+  .btn-primary{background:#1d3a66;border-color:#4d9fff;color:#fff!important}
+  #naniteDebug{position:fixed;bottom:12px;left:12px;padding:10px;background:rgba(5,9,17,.85);
+    border:1px solid #24344f;border-radius:8px;color:#8fd0ff;font-size:11px;font-family:monospace;z-index:3}
+  #naniteDebug .label{color:#7f96c0}
+  #naniteDebug .value{color:#4d9fff;font-weight:600}
+  #loadingScreen{position:fixed;top:0;left:0;width:100%;height:100%;background:#000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;
+    color:#8fd0ff;font-family:system-ui,Segoe UI,Roboto,sans-serif}
+  #loadingScreen .title{font-size:24px;margin-bottom:20px;color:#eaf2ff}
+  #loadingScreen .progress-bar{width:300px;height:8px;background:#1a2a4a;border-radius:4px;overflow:hidden;margin:10px 0}
+  #loadingScreen .progress-fill{height:100%;background:#4d9fff;width:0%;transition:width .3s ease}
+  #loadingScreen .stage{font-size:14px;color:#7f96c0;margin-top:10px}
+  #loadingScreen .percent{font-size:18px;color:#4d9fff;margin-top:5px}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="loadingScreen">
+  <div class="title">🪐 Генерация планеты</div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="percent" id="progressPercent">0%</div>
+  <div class="stage" id="loadingStage">Инициализация...</div>
+</div>
+
+<div id="hud">
+  <div class="t">КОНСТРУКТОР ПЛАНЕТ · NANITE VT</div>
+  <div class="sec">Графика / пост</div>
+  <div id="qbtns">
+    <button data-q="low">Низк</button>
+    <button data-q="med">Средн</button>
+    <button data-q="high" class="on">Кино</button>
+  </div>
+  <div class="sec">Планета</div>
+  <select id="preset"></select>
+  <div class="btn-row">
+    <button id="rand">🎲 Рандом</button>
+    <button id="fullRandom" class="btn-primary">🎲 Полный рандом</button>
+  </div>
+  <div class="sec">Физика / свет</div>
+  <label><span class="cap">Скорость времени</span><b id="vSpeed">0.30</b><input id="speed" type="range" min="0" max="4" step="0.05" value="0.3"></label>
+  <div class="sec">Сохранение</div>
+  <textarea id="jsonOut" spellcheck="false"></textarea>
+  <div class="btn-row">
+    <button id="copyJson">📋 Копировать</button>
+    <button id="applyJson">📥 Вставить</button>
+  </div>
+  <div class="sec">Журнал</div>
+  <div id="feed"></div>
+  <div id="hint">ЛКМ — вращение · колесо — масштаб</div>
+</div>
+
+<div id="naniteDebug">
+  <div><span class="label">FPS:</span> <span class="value" id="dbgFps">60</span></div>
+  <div><span class="label">Листьев:</span> <span class="value" id="dbgLeaves">0</span> · <span class="label">треуг:</span> <span class="value" id="dbgTriangles">0</span></div>
+  <div><span class="label">Страниц VT:</span> <span class="value" id="dbgPages">0</span>/<span class="value" id="dbgSlots">0</span></div>
+  <div><span class="label">Fallback листьев:</span> <span class="value" id="dbgFallback">0</span></div>
+  <div><span class="label">Rebuild:</span> <span class="value" id="dbgRebuild">0</span> ms · <span class="label">DC:</span> <span class="value" id="dbgDC">1</span></div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.152.2/build/three.module.js"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+'use strict';
+
+const CONFIG=Object.freeze({generatorVersion:'7.3.0-nanite-vt'});
+
+// ============================================================================
+// NANITE + VIRTUAL TEXTURES CONFIG
+// ============================================================================
+const QT=Object.freeze({
+  MAX_DEPTH:7,          // 128×128=16384 вирт. texels/грань — резко вблизи
+  GRID:12,
+  BASE_TARGET:120,
+  MAX_LEAVES:1024,
+  SKIRT:0.015,
+  CACHE_LIMIT:3000
+});
+const VT=Object.freeze({
+  PAGE_SIZE:128,
+  ATLAS_GRID:24,
+  MAX_GEN_PER_FRAME:16,
+  PREGEN_LEVELS:2
+});
+
+const CATEGORY=Object.freeze({
+  ROCKY:'Каменистые',GAS:'Газовые',WATER:'Водные',EXOTIC:'Экзотические',
+  RARE:'Редкие',LIFELESS:'Безжизненные',MOON:'Спутники',FULL_RANDOM:'Полный рандом'
+});
+const SURFACE_TYPES=['rocky','lava','ice','sand','metal','bio','cratered','ridged','cracked','maria'];
+const ANOMALY_TYPES=['none','giant_crater','rift_zone','hotspot','dark_basin'];
+
+// ============================================================================
+// UTILS
+// ============================================================================
+function hexToRgb(hex){
+  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return m?[parseInt(m[1],16)/255,parseInt(m[2],16)/255,parseInt(m[3],16)/255]:[.5,.5,.5];
+}
+function jitterHSL(hex,rng,hueAmt=.12,satAmt=.25,lightAmt=.2){
+  const[r,g,b]=hexToRgb(hex);
+  const max=Math.max(r,g,b),min=Math.min(r,g,b);
+  let h=0,s=0,l=(max+min)/2;
+  if(max!==min){
+    const d=max-min;
+    s=l>.5?d/(2-max-min):d/(max+min);
+    if(max===r)h=((g-b)/d+(g<b?6:0))/6;
+    else if(max===g)h=((b-r)/d+2)/6;
+    else h=((r-g)/d+4)/6;
+  }
+  h+=(rng()*2-1)*hueAmt;
+  s=Math.min(1,Math.max(0,s+(rng()*2-1)*satAmt));
+  l=Math.min(.95,Math.max(.05,l+(rng()*2-1)*lightAmt));
+  h=((h%1)+1)%1;
+  const f=(p,q,t)=>{
+    t=((t%1)+1)%1;
+    if(t<1/6)return p+(q-p)*6*t;
+    if(t<1/2)return q;
+    if(t<2/3)return p+(q-p)*(2/3-t)*6;
+    return p;
+  };
+  let rr,gg,bb;
+  if(s===0){rr=gg=bb=l;}
+  else{const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;
+    rr=f(p,q,h+1/3);gg=f(p,q,h);bb=f(p,q,h-1/3);}
+  return `#${Math.round(rr*255).toString(16).padStart(2,'0')}${Math.round(gg*255).toString(16).padStart(2,'0')}${Math.round(bb*255).toString(16).padStart(2,'0')}`;
+}
+
+// ============================================================================
+// PLANET TYPES + GENERATOR
+// ============================================================================
+const DEFAULT_RANGES=Object.freeze({
+  massEarth:[.01,10],radiusEarth:[.1,3],density:[2,8],temperatureK:[50,3000],
+  atmospherePressureAtm:[0,5],volcanism:[0,1],tectonics:[0,1],
+  ocean:[0,1],ice:[0,1],lava:[0,1],storm:[0,1],cities:[0,0],
+  clouds:[0,1],scale:[.3,2.5],fire:[0,1],dust:[0,1],toxicity:[0,1],craters:[0,1],
+  surfaceType:[0,9],anomalyType:[0,4],habitability:[0,100]
+});
+const FULL_RANDOM_RANGES=Object.freeze(Object.assign({},DEFAULT_RANGES,{
+  massEarth:[.01,400],radiusEarth:[.1,15],density:[.2,9],temperatureK:[10,3000],
+  atmospherePressureAtm:[0,10],scale:[.3,3],cities:[0,1]
+}));
+const DEFAULT_COLORS=Object.freeze({core:'#ff6a00',mantle:'#ff9d3f',crust:'#7a5c40',cloud:'#e8f4ff',storm:'#ffd166',ring:'#c8b8a0'});
+
+function T(id,name,category,composition,ranges={},colors={}){
+  return{id,name,category,composition,
+    ranges:Object.assign({},DEFAULT_RANGES,ranges),
+    colors:Object.assign({},DEFAULT_COLORS,colors)};
+}
+
+const PLANET_TYPES=Object.freeze([
+  T('full_random','🎲 Полный рандом',CATEGORY.FULL_RANDOM,'Случайная комбинация',FULL_RANDOM_RANGES),
+  T('earth_like','Землеподобная',CATEGORY.ROCKY,'N2/O2, силикатная кора',{massEarth:[.7,1.5],radiusEarth:[.85,1.2],temperatureK:[220,320],atmospherePressureAtm:[.6,1.3],ocean:[.35,.85],lava:[0,.1],clouds:[.3,.8],surfaceType:[0,0],scale:[.8,1.3],habitability:[60,80]},{crust:'#4f7f52',cloud:'#eaf6ff'}),
+  T('gas_giant','Газовый гигант',CATEGORY.GAS,'H/He',{massEarth:[30,400],radiusEarth:[4,12],density:[.4,1.8],storm:[.4,.9],clouds:[.6,1],surfaceType:[0,0],scale:[2,3]},{core:'#ffb36b',crust:'#b4763d',cloud:'#f3e2c2'}),
+  T('lava_planet','Лавовая планета',CATEGORY.EXOTIC,'Расплавленная поверхность',{massEarth:[.2,10],temperatureK:[900,2200],volcanism:[.7,1],lava:[.7,1],fire:[.6,1],clouds:[.2,.6],surfaceType:[1,1],scale:[.6,2]},{core:'#ff2d00',crust:'#241108',cloud:'#ffcf9f'}),
+  T('desert_planet','Пустынная планета',CATEGORY.EXOTIC,'Сухой мир',{massEarth:[.1,5],temperatureK:[180,450],atmospherePressureAtm:[.02,.35],ocean:[0,.05],clouds:[0,.2],surfaceType:[3,3],dust:[.5,1],scale:[.5,1.5]},{crust:'#c77f45',cloud:'#f4e0c0'}),
+  T('ice_giant','Ледяной гигант',CATEGORY.GAS,'Вода, метан, аммиак',{massEarth:[8,60],radiusEarth:[2.5,5],ice:[.5,.9],clouds:[.5,.9],scale:[1.5,2.2]},{core:'#69e6e0',crust:'#2b6f8a',cloud:'#d8fbff'}),
+  T('ocean_planet','Планета-океан',CATEGORY.WATER,'Глобальный океан',{massEarth:[.3,5],temperatureK:[240,340],ocean:[.85,1],lava:[0,.15],clouds:[.4,.9],surfaceType:[0,0],scale:[.8,1.5],habitability:[65,85]},{core:'#ff7b3d',crust:'#2f65b8',cloud:'#f0fbff'}),
+  T('snowball','Снежный мир',CATEGORY.WATER,'Сплошной лёд',{massEarth:[.2,5],temperatureK:[70,220],ice:[.7,1],clouds:[.2,.7],surfaceType:[2,9],scale:[.6,1.4]},{core:'#7fb2ff',crust:'#f2fbff',cloud:'#ffffff'}),
+  T('moon','Луна',CATEGORY.MOON,'Спутник без атмосферы',{massEarth:[.01,.1],radiusEarth:[.2,.5],atmospherePressureAtm:[0,.001],ocean:[0,0],clouds:[0,0],craters:[.8,1],surfaceType:[6,6],scale:[.2,.5]},{core:'#888888',crust:'#aaaaaa'}),
+]);
+
+class PlanetGenerator{
+  constructor(types){this.types=types;this.typesById=new Map(types.map(t=>[t.id,t]));}
+  findType(id){return this.typesById.get(id);}
+  generate(typeId=null,seed=null){
+    const resolvedSeed=seed??Math.floor(Math.random()*1000000);
+    let a=resolvedSeed>>>0;
+    const rng=()=>{a|=0;a=(a+0x6d2b79f5)|0;let t=Math.imul(a^(a>>>15),1|a);
+      t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};
+    const def=typeId?this.findType(typeId):this.types[Math.floor(rng()*this.types.length)];
+    if(!def)throw new Error(`Тип не найден: ${typeId}`);
+    const pick=(r)=>Array.isArray(r)&&r.length===2?r[0]+rng()*(r[1]-r[0]):0;
+    const clamp01=v=>Math.min(1,Math.max(0,v));
+    const p={
+      massEarth:pick(def.ranges.massEarth),radiusEarth:pick(def.ranges.radiusEarth),
+      density:pick(def.ranges.density),temperatureK:pick(def.ranges.temperatureK),
+      atmospherePressureAtm:pick(def.ranges.atmospherePressureAtm),
+      volcanism:clamp01(pick(def.ranges.volcanism)),tectonics:clamp01(pick(def.ranges.tectonics)),
+      ocean:clamp01(pick(def.ranges.ocean)),ice:clamp01(pick(def.ranges.ice)),
+      lava:clamp01(pick(def.ranges.lava)),storm:clamp01(pick(def.ranges.storm)),
+      cities:clamp01(pick(def.ranges.cities)),fire:clamp01(pick(def.ranges.fire||[0,0])),
+      dust:clamp01(pick(def.ranges.dust||[0,0])),toxicity:clamp01(pick(def.ranges.toxicity||[0,0])),
+      craters:clamp01(pick(def.ranges.craters||[0,0])),
+      scale:pick(def.ranges.scale||[.5,1.5]),
+      seedOffset:[rng()*200-100,rng()*200-100,rng()*200-100],
+      habitability:pick(def.ranges.habitability||[0,100])
+    };
+    const surface={type:SURFACE_TYPES[Math.floor(pick(def.ranges.surfaceType||[0,9]))]||'rocky'};
+    return{
+      meta:{generatorVersion:CONFIG.generatorVersion,seed:resolvedSeed,typeId:def.id,
+        typeName:def.name,category:def.category,composition:def.composition,
+        createdAt:new Date().toISOString()},
+      physics:p,surface,
+      clouds:{density:clamp01(pick(def.ranges.clouds))},
+      palette:{
+        core:jitterHSL(def.colors.core,rng,.15,.3,.2),
+        mantle:jitterHSL(def.colors.mantle,rng,.15,.3,.2),
+        crust:jitterHSL(def.colors.crust,rng,.15,.35,.25),
+        cloud:jitterHSL(def.colors.cloud,rng,.1,.2,.15),
+        storm:jitterHSL(def.colors.storm,rng,.15,.3,.2),
+      },
+    };
+  }
+  export(s){return JSON.stringify(s,null,2);}
+  import(json){
+    const p=JSON.parse(json);
+    if(!p.meta||!p.physics)throw new Error('Некорректный формат JSON');
+    return p;
+  }
+}
+const generator=new PlanetGenerator(PLANET_TYPES);
+
+// ============================================================================
+// QUADTREE GEOMETRY
+// ============================================================================
+function cubeDir(face,u,v,out){
+  const x=u*2-1,y=v*2-1;
+  switch(face){
+    case 0:out.set(1,y,-x);break;
+    case 1:out.set(-1,y,x);break;
+    case 2:out.set(x,1,-y);break;
+    case 3:out.set(x,-1,y);break;
+    case 4:out.set(x,y,1);break;
+    default:out.set(-x,y,-1);break;
+  }
+  return out.normalize();
+}
+
+const LEAF_SIDE=QT.GRID+1;
+const LEAF_VERTS=LEAF_SIDE*LEAF_SIDE+4*LEAF_SIDE;
+const LEAF_IDX=(()=>{
+  const seg=QT.GRID,side=LEAF_SIDE,arr=[];
+  for(let iy=0;iy<seg;iy++)for(let ix=0;ix<seg;ix++){
+    const a=iy*side+ix,b=a+1,c=a+side,d=c+1;
+    arr.push(a,b,c,b,d,c);
+  }
+  const g=(iy,ix)=>iy*side+ix;
+  const ss=side*side;
+  const strip=(bf,base)=>{for(let i=0;i<seg;i++){
+    const b0=bf(i),b1=bf(i+1),s0=base+i,s1=base+i+1;
+    arr.push(b0,s0,b1,b1,s0,s1);}};
+  strip(i=>g(0,i),ss);
+  strip(i=>g(seg,i),ss+side);
+  strip(i=>g(i,0),ss+2*side);
+  strip(i=>g(i,seg),ss+3*side);
+  return new Uint32Array(arr);
+})();
+const LEAF_TRI=LEAF_IDX.length/3;
+
+function buildLeafData(face,depth,x,y,radius){
+  const seg=QT.GRID,s=1/(1<<depth);
+  const u0=x*s,v0=y*s,u1=(x+1)*s,v1=(y+1)*s;
+  const positions=new Float32Array(LEAF_VERTS*3);
+  const lods=new Float32Array(LEAF_VERTS);
+  const uvs=new Float32Array(LEAF_VERTS*2);
+  const tmp=new THREE.Vector3();
+  const lodV=depth/QT.MAX_DEPTH;
+  let i=0;
+  const put=(u,v,lu,lv,scale)=>{
+    cubeDir(face,u,v,tmp);
+    positions[i*3]=tmp.x*radius*scale;
+    positions[i*3+1]=tmp.y*radius*scale;
+    positions[i*3+2]=tmp.z*radius*scale;
+    uvs[i*2]=lu;uvs[i*2+1]=lv;
+    lods[i]=lodV;i++;
+  };
+  for(let iy=0;iy<LEAF_SIDE;iy++){
+    const v=v0+(iy/seg)*(v1-v0);
+    for(let ix=0;ix<LEAF_SIDE;ix++){
+      const u=u0+(ix/seg)*(u1-u0);
+      put(u,v,ix/seg,iy/seg,1);
+    }
+  }
+  for(let ix=0;ix<LEAF_SIDE;ix++)put(u0+(ix/seg)*(u1-u0),v0,ix/seg,0,1-QT.SKIRT);
+  for(let ix=0;ix<LEAF_SIDE;ix++)put(u0+(ix/seg)*(u1-u0),v1,ix/seg,1,1-QT.SKIRT);
+  for(let iy=0;iy<LEAF_SIDE;iy++)put(u0,v0+(iy/seg)*(v1-v0),0,iy/seg,1-QT.SKIRT);
+  for(let iy=0;iy<LEAF_SIDE;iy++)put(u1,v0+(iy/seg)*(v1-v0),1,iy/seg,1-QT.SKIRT);
+  return{positions,lods,uvs};
+}
+
+// ============================================================================
+// GLSL CHUNKS
+// ============================================================================
+const GLSL_NOISE=`
+float hash1(vec3 p){p=fract(p*vec3(.1031,.1030,.0973));p+=dot(p,p.yxz+33.33);
+  return fract((p.x+p.y)*(p.x+p.z)*(p.y+p.z));}
+float vnoise(vec3 p){vec3 i=floor(p),f=fract(p);vec3 u=f*f*(3.0-2.0*f);
+  return mix(mix(mix(hash1(i),hash1(i+vec3(1,0,0)),u.x),
+    mix(hash1(i+vec3(0,1,0)),hash1(i+vec3(1,1,0)),u.x),u.y),
+    mix(mix(hash1(i+vec3(0,0,1)),hash1(i+vec3(1,0,1)),u.x),
+    mix(hash1(i+vec3(0,1,1)),hash1(i+vec3(1,1,1)),u.x),u.y),u.z);}
+float fbmN(vec3 p,float oct){float a=.5,s=0.;
+  for(int k=0;k<7;k++){if(float(k)>=oct)break;s+=a*vnoise(p);p=p*2.03+vec3(1.7);a*=.5;}return s;}
+`;
+
+const GLSL_SURFACE=`
+uniform vec3 uSeed;
+uniform float uSea;uniform float uWater;uniform float uIceCaps;uniform float uLava;
+uniform float uCraters;uniform float uCraterScale;
+uniform vec3 uOcDeep;uniform vec3 uOcShelf;uniform vec3 uLandDry;uniform vec3 uLandLow;
+uniform vec3 uLandHigh;uniform vec3 uRock;uniform vec3 uSnow;
+${GLSL_NOISE}
+float craterField(vec3 d){
+  if(uCraters<.05)return 0.;
+  vec3 csd=d*3.0;vec3 ci=floor(csd);float acc=0.;
+  for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++){
+    vec3 g=vec3(float(x),float(y),float(z));
+    float rnd=hash1(ci+g);
+    if(rnd>.55){
+      vec3 o=fract((ci+g+7.7)*vec3(.1031,.1030,.0973));
+      vec3 cpos=normalize(ci+g+o-.5);
+      float dist=acos(clamp(dot(d,cpos),-1.,1.));
+      float csize=(.02+.05*hash1(ci+g+3.3))*uCraterScale;
+      float bowl=smoothstep(csize*.6,0.,dist);
+      float rim=smoothstep(csize,csize*.85,dist)*smoothstep(csize*.6,csize*.8,dist);
+      acc+=(rim*.25-bowl*.35)*(.3+.7*hash1(ci+g+5.1));
+    }
+  }
+  return acc*uCraters;
+}
+float terrainH(vec3 d,float oct){
+  vec3 sd=d+uSeed*.05;
+  float h=(fbmN(sd*2.0+vec3(7.31),oct)+.30*fbmN(sd*5.5+vec3(3.71),oct)+.15*fbmN(sd*12.+vec3(1.3),oct))/1.45;
+  h+=craterField(d)*.5;
+  return h;
+}
+vec4 surfaceAlbedo(vec3 d,float oct){
+  float h=terrainH(d,oct);
+  float land=smoothstep(uSea,uSea+.008,h);
+  float iceN=.16*(fbmN(d*7.+uSeed,4.)-.5);
+  float ice=clamp(smoothstep(.80,.97,abs(d.y)+iceN)*clamp(uIceCaps,0.,1.5),0.,1.);
+  vec3 snowCol=uSnow;
+  vec3 ocW=mix(uOcDeep*.45,uOcDeep,smoothstep(uSea-.14,uSea-.10,h));
+  ocW=mix(ocW,uOcShelf,smoothstep(uSea-.05,uSea-.026,h));
+  vec3 oc=mix(ocW,uLandDry*.55,1.-uWater);
+  oc=mix(oc,snowCol,ice*uWater);
+  vec3 lc=uLandDry;
+  lc=mix(lc,uLandLow,smoothstep(uSea+.02,uSea+.06,h));
+  lc=mix(lc,uLandHigh,smoothstep(uSea+.05,uSea+.10,h));
+  lc=mix(lc,uRock,smoothstep(uSea+.14,uSea+.20,h));
+  lc=mix(lc,snowCol,smoothstep(uSea+.20,uSea+.34,h+abs(d.y)*.12));
+  lc*=.90+.18*fbmN(d*7.+5.5+uSeed,4.);
+  lc=mix(lc,snowCol,ice);
+  float lavaK=smoothstep(.15,.6,uLava);
+  if(lavaK>.01){
+    float ln=fbmN(d*5.+uSeed,4.);
+    float crack=1.-smoothstep(0.,.02,abs(ln-.5));
+    vec3 lav=mix(vec3(.45,.05,0.),vec3(1.,.5,.1),crack);
+    lc=mix(lc,lav,crack*lavaK);
+    lc+=lav*crack*lavaK*.5;
+  }
+  vec3 col=mix(oc,lc,land);
+  float waterM=(1.-land)*(1.-ice)*uWater;
+  return vec4(col,waterM);
+}
+`;
+
+const GLSL_CUBEDIR=`
+vec3 cubeDir(int f,vec2 q){
+  vec2 c=q*2.-1.;
+  if(f==0)return normalize(vec3(1.,c.y,-c.x));
+  if(f==1)return normalize(vec3(-1.,c.y,c.x));
+  if(f==2)return normalize(vec3(c.x,1.,-c.y));
+  if(f==3)return normalize(vec3(c.x,-1.,c.y));
+  if(f==4)return normalize(vec3(c.x,c.y,1.));
+  return normalize(vec3(-c.x,c.y,-1.));
+}
+`;
+
+// ============================================================================
+// MAIN
+// ============================================================================
+const feed=document.getElementById('feed');
+function log(m){
+  const t=new Date().toLocaleTimeString('ru-RU');
+  console.info(`[${t}] ${m}`);
+  const d=document.createElement('div');d.textContent=`[${t}] ${m}`;
+  feed.prepend(d);while(feed.children.length>5)feed.removeChild(feed.lastChild);
+}
+function updateLoadingProgress(pct,stage){
+  document.getElementById('progressFill').style.width=pct+'%';
+  document.getElementById('progressPercent').textContent=Math.round(pct)+'%';
+  document.getElementById('loadingStage').textContent=stage;
+}
+function hideLoadingScreen(){
+  const s=document.getElementById('loadingScreen');
+  s.style.transition='opacity .5s ease';s.style.opacity='0';
+  setTimeout(()=>{s.style.display='none';},500);
+}
+window.addEventListener('error',e=>log(`ОШИБКА: ${e.message} @ ${e.filename}:${e.lineno}`));
+
+function main(){
+  if(!document.createElement('canvas').getContext('webgl2')){
+    document.getElementById('loadingScreen').innerHTML=
+      `<div class="title">❌ WebGL2 не поддерживается</div>
+       <div class="stage">Обновите браузер: Chrome 56+, Firefox 51+, Safari 15+</div>`;
+    return;
+  }
+  log('INIT: WebGL2 доступен');
+  updateLoadingProgress(10,'WebGL2 инициализирован');
+
+  // --- ПЕКАРЬ СТРАНИЦ VT ---
+  const GEN_VS=`
+out vec2 vUv;
+void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`;
+
+  const GEN_FS=`
+in vec2 vUv;
+out vec4 fragColor;
+uniform float uPass;
+uniform float uFace;uniform float uU0;uniform float uV0;uniform float uSize;uniform float uLevel;
+${GLSL_SURFACE}
+${GLSL_CUBEDIR}
+void main(){
+  int f=int(uFace+.5);
+  vec2 fuv=vec2(uU0,uV0)+vUv*uSize;
+  float oct=6.0; /* единая функция высоты для всех уровней */
+  if(uPass<.5){
+    vec3 d=cubeDir(f,fuv);
+    fragColor=surfaceAlbedo(d,oct);
+  }else{
+    float texel=uSize/${VT.PAGE_SIZE}.0;
+    vec3 d0=cubeDir(f,fuv);
+    vec3 du=cubeDir(f,fuv+vec2(texel,0.));
+    vec3 dv=cubeDir(f,fuv+vec2(0.,texel));
+    float h0=terrainH(d0,oct);
+    float hu=terrainH(du,oct);
+    float hv=terrainH(dv,oct);
+    vec3 T=normalize(du-d0);
+    vec3 N=normalize(d0);
+    vec3 B=normalize(cross(N,T));
+    /* сила нормалей НЕ зависит от разрешения уровня → свет одинаков на всех LOD */
+    float K=0.35/texel;
+    vec3 nt=normalize(vec3(-(hu-h0)*K,-(hv-h0)*K,1.));
+    float ice=clamp(smoothstep(.80,.97,abs(d0.y)+.1*(fbmN(d0*7.+uSeed,4.)-.5))*clamp(uIceCaps,0.,1.5),0.,1.);
+    fragColor=vec4(nt*.5+.5,ice);
+  }
+}`;
+
+  // --- РАНТАЙМ-ШЕЙДЕР ТАЙЛОВ ---
+  const TILE_VS=`
+in float aLod;
+in vec2 aUV;
+in vec2 aUV0;
+in float aUVSize;
+in vec4 aPage;
+out vec3 vWP;out vec3 vN;out vec3 vT;out vec3 vB;
+out vec2 vUV;out vec4 vPage;out float vLod;out vec2 vFaceUV;out float vUVSize;
+${GLSL_CUBEDIR}
+void main(){
+  int f=int(aPage.w+.5);
+  vec2 fuv=aUV0+aUV*aUVSize;
+  float eps=aUVSize/16.;
+  vec3 P=cubeDir(f,fuv);
+  vec3 Pu=cubeDir(f,fuv+vec2(eps,0.));
+  vec3 Pv=cubeDir(f,fuv+vec2(0.,eps));
+  vN=normalize(P);
+  vT=normalize(Pu-P);
+  vB=normalize(cross(vN,vT));
+  vWP=position;
+  vUV=aUV;vPage=aPage;vLod=aLod;vFaceUV=fuv;vUVSize=aUVSize;
+  gl_Position=projectionMatrix*viewMatrix*vec4(position,1.);
+}`;
+
+  const TILE_FS=`
+in vec3 vWP;in vec3 vN;in vec3 vT;in vec3 vB;
+in vec2 vUV;in vec4 vPage;in float vLod;in vec2 vFaceUV;in float vUVSize;
+out vec4 fragColor;
+uniform sampler2D uAtlasA;uniform sampler2D uAtlasN;
+uniform float uAtlasGrid;
+uniform vec3 uSunDir;uniform vec3 uCam;uniform float uPost;uniform float uRadius;
+uniform vec3 uAtmoCol;
+${GLSL_SURFACE}
+vec3 tonemap(vec3 c){return uPost>.5?c:1.-exp(-c*1.65);}
+void main(){
+  vec3 N=normalize(vN);
+  if(!gl_FrontFacing)N=-N;
+  vec3 T=normalize(vT);
+  vec3 B=normalize(cross(N,T));
+  vec3 d=normalize(vWP);
+  vec3 sun=normalize(uSunDir);
+  vec3 albedo;float waterM;vec3 n=N;float ice=0.;
+
+  if(vPage.z>.5){
+    float inset=0.5/${VT.PAGE_SIZE}.0;
+    vec2 pageUV=(vPage.xy+clamp(vUV,inset,1.-inset))/uAtlasGrid;
+    vec4 A=texture(uAtlasA,pageUV);
+    vec4 Nn=texture(uAtlasN,pageUV);
+    albedo=A.rgb;waterM=A.a;
+    vec3 nt=Nn.rgb*2.-1.;
+    n=normalize(T*nt.x+B*nt.y+N*max(nt.z,.25));
+    if(!gl_FrontFacing)n=-n;
+    ice=Nn.a;
+  }else{
+    /* Fallback = та же поверхность + те же нормали, что в пекаре */
+    vec4 A=surfaceAlbedo(d,6.0);
+    albedo=A.rgb;waterM=A.a;
+    ice=clamp(smoothstep(.80,.97,abs(d.y)+.1*(fbmN(d*7.+uSeed,4.)-.5))*clamp(uIceCaps,0.,1.5),0.,1.);
+    float e=0.0015;
+    float h0=terrainH(d,6.0);
+    float hx=terrainH(normalize(d+T*e),6.0);
+    float hy=terrainH(normalize(d+B*e),6.0);
+    n=normalize(N-(T*(hx-h0)+B*(hy-h0))*(0.35/e));
+    if(!gl_FrontFacing)n=-n;
+  }
+
+  /* Микро-рельеф и микро-цвет: непрерывны по дистанции (без швов) */
+  float ratio=length(uCam-vWP)/max(uRadius,.001);
+  float closeFade=1.-smoothstep(1.2,3.0,ratio);
+  float m0=vnoise(d*90.+uSeed);
+  float mx=vnoise((d+T*.002)*90.+uSeed);
+  float my=vnoise((d+B*.002)*90.+uSeed);
+  n=normalize(n+(T*(mx-m0)+B*(my-m0))*closeFade*12.0);
+  albedo*=1.+(m0-.5)*.18*closeFade;
+
+  float nd=dot(n,sun);
+  float diff=.30+.70*max(nd,0.);
+  float night=smoothstep(.08,-.15,nd);
+  float dayF=smoothstep(-.1,.3,nd);
+
+  vec3 col=albedo*diff*vec3(1.05,1.0,0.95);
+  col+=albedo*vec3(.004,.006,.012);
+
+  vec3 V=normalize(uCam-vWP);
+  vec3 H=normalize(sun+n);
+  float spec=pow(max(dot(n,H),0.),240.)*waterM*(1.-night)*0.8;
+  spec+=pow(max(dot(n,H),0.),48.)*ice*.3*dayF;
+  col+=vec3(1.)*spec;
+  col+=albedo*vec3(.010,.012,.024);
+
+  float viewMu=clamp(dot(N,V),0.,1.);
+  float limbHaze=pow(1.-viewMu,2.2);
+  col=mix(col,uAtmoCol*.85,limbHaze*(.45*dayF+.03));
+
+  fragColor=vec4(tonemap(col),1.);
+}`;
+
+  updateLoadingProgress(25,'Создание рендерера и атласов');
+
+  const canvas=document.getElementById('scene');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.autoClear=false;
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,400);
+
+  const atlasSize=VT.ATLAS_GRID*VT.PAGE_SIZE;
+  const rtOpts={depthBuffer:false,stencilBuffer:false,generateMipmaps:false,
+    minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter};
+  const atlasA=new THREE.WebGLRenderTarget(atlasSize,atlasSize,rtOpts);
+  const atlasN=new THREE.WebGLRenderTarget(atlasSize,atlasSize,rtOpts);
+
+  const shared={
+    uSeed:{value:new THREE.Vector3(0,0,0)},
+    uSea:{value:.45},uWater:{value:1},uLava:{value:0},uIceCaps:{value:1},
+    uCraters:{value:0},uCraterScale:{value:1},
+    uOcDeep:{value:new THREE.Vector3(.02,.1,.22)},
+    uOcShelf:{value:new THREE.Vector3(.04,.18,.32)},
+    uLandDry:{value:new THREE.Vector3(.42,.36,.28)},
+    uLandLow:{value:new THREE.Vector3(.32,.27,.21)},
+    uLandHigh:{value:new THREE.Vector3(.22,.18,.14)},
+    uRock:{value:new THREE.Vector3(.18,.15,.12)},
+    uSnow:{value:new THREE.Vector3(.72,.75,.78)},
+    uAtmoCol:{value:new THREE.Vector3(.4,.45,.52)},
+    uSunDir:{value:new THREE.Vector3(1,.25,.4).normalize()},
+    uCam:{value:new THREE.Vector3()},
+    uPost:{value:1},
+    uRadius:{value:1}
+  };
+
+  const genScene=new THREE.Scene();
+  const genCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  const genMat=new THREE.ShaderMaterial({vertexShader:GEN_VS,fragmentShader:GEN_FS,
+    uniforms:Object.assign({},shared,{
+      uPass:{value:0},uFace:{value:0},uU0:{value:0},uV0:{value:0},uSize:{value:1},uLevel:{value:0}
+    })});
+  genMat.glslVersion=THREE.GLSL3;
+  genScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),genMat));
+
+  const tileMaterial=new THREE.ShaderMaterial({vertexShader:TILE_VS,fragmentShader:TILE_FS,
+    uniforms:Object.assign({},shared,{
+      uAtlasA:{value:atlasA.texture},
+      uAtlasN:{value:atlasN.texture},
+      uAtlasGrid:{value:VT.ATLAS_GRID}
+    }),side:THREE.DoubleSide});
+  tileMaterial.glslVersion=THREE.GLSL3;
+
+  updateLoadingProgress(45,'Создание Nanite quadtree + VT');
+
+  const _tmpCorner=new THREE.Vector3();
+  const _tmpCenter=new THREE.Vector3();
+  const _tmpSphere=new THREE.Sphere();
+  const _vpSave=new THREE.Vector4();
+
+  class NaniteQuadtree{
+    constructor(scene,material){
+      this.material=material;
+      this.radius=1;
+      this.targetPx=QT.BASE_TARGET;
+      this.cache=new Map();
+      this.leaves=[];
+      this.lastSignature='';
+      this.lastRebuildMs=0;
+      this.stats={leaves:0,triangles:0,fallback:0};
+      this.frameId=0;
+      this.residencyVersion=0;
+      this.neededSet=new Set();
+
+      this.pageTable=new Map();
+      this.slotPage=new Array(VT.ATLAS_GRID*VT.ATLAS_GRID).fill(-1);
+      this.slotUsed=new Array(VT.ATLAS_GRID*VT.ATLAS_GRID).fill(0);
+      this.freeSlots=[];
+      for(let i=this.slotPage.length-1;i>=0;i--)this.freeSlots.push(i);
+      this.requests=[];
+      this.pending=new Set();
+
+      this.posArr=new Float32Array(QT.MAX_LEAVES*LEAF_VERTS*3);
+      this.lodArr=new Float32Array(QT.MAX_LEAVES*LEAF_VERTS);
+      this.uvArr=new Float32Array(QT.MAX_LEAVES*LEAF_VERTS*2);
+      this.uv0Arr=new Float32Array(QT.MAX_LEAVES*LEAF_VERTS*2);
+      this.uvSizeArr=new Float32Array(QT.MAX_LEAVES*LEAF_VERTS);
+      this.pageArr=new Float32Array(QT.MAX_LEAVES*LEAF_VERTS*4);
+      this.idxArr=new Uint32Array(QT.MAX_LEAVES*LEAF_IDX.length);
+
+      this.geo=new THREE.BufferGeometry();
+      const mk=(arr,n)=>{const a=new THREE.BufferAttribute(arr,n);a.setUsage(THREE.DynamicDrawUsage);return a;};
+      this.attrs={
+        position:mk(this.posArr,3),aLod:mk(this.lodArr,1),aUV:mk(this.uvArr,2),
+        aUV0:mk(this.uv0Arr,2),aUVSize:mk(this.uvSizeArr,1),aPage:mk(this.pageArr,4)
+      };
+      for(const k in this.attrs)this.geo.setAttribute(k,this.attrs[k]);
+      this.idxAttr=mk(this.idxArr,1);
+      this.geo.setIndex(this.idxAttr);
+      this.geo.setDrawRange(0,0);
+      this.mesh=new THREE.Mesh(this.geo,material);
+      this.mesh.frustumCulled=false;
+      scene.add(this.mesh);
+      log(`Nanite+VT: ${this.slotPage.length} слотов VT, атлас ${atlasSize}²`);
+    }
+
+    setPlanet(radius){
+      this.radius=radius;
+      this.cache.clear();
+      this.pageTable.clear();
+      this.slotPage.fill(-1);
+      this.freeSlots.length=0;
+      for(let i=this.slotPage.length-1;i>=0;i--)this.freeSlots.push(i);
+      this.pending.clear();
+      this.lastSignature='__reset__';
+      this.residencyVersion++;
+      this.geo.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,0,0),radius*3);
+    }
+
+    pageKey(face,level,x,y){return(face<<17)|(level<<14)|(y<<7)|x;}
+
+    getLeafData(face,depth,x,y){
+      const key=(face<<17)|(depth<<14)|(y<<7)|x;
+      let d=this.cache.get(key);
+      if(!d){
+        d=buildLeafData(face,depth,x,y,this.radius);
+        this.cache.set(key,d);
+        if(this.cache.size>QT.CACHE_LIMIT){
+          const first=this.cache.keys().next().value;
+          this.cache.delete(first);
+        }
+      }
+      return d;
+    }
+
+    visit(face,depth,x,y,camera,frustum,camDir,projFactor){
+      const s=1/(1<<depth);
+      const u0=x*s,v0=y*s,u1=(x+1)*s,v1=(y+1)*s;
+      cubeDir(face,(u0+u1)/2,(v0+v1)/2,_tmpCenter);
+
+      let maxAng=0;
+      const corners=[[u0,v0],[u1,v0],[u0,v1],[u1,v1]];
+      for(const c of corners){
+        cubeDir(face,c[0],c[1],_tmpCorner);
+        const ang=_tmpCorner.angleTo(_tmpCenter);
+        if(ang>maxAng)maxAng=ang;
+      }
+      const boundR=Math.sin(maxAng)*1.15;
+
+      const R=this.radius,D=camera.position.length();
+      const horizonCos=Math.min(1,R/D);
+      const dotC=THREE.MathUtils.clamp(_tmpCenter.dot(camDir),-1,1);
+      const angCenter=Math.acos(dotC);
+      const cosMax=Math.cos(Math.max(0,angCenter-maxAng));
+      if(cosMax<horizonCos-0.03)return;
+
+      _tmpSphere.center.copy(_tmpCenter).multiplyScalar(this.radius);
+      _tmpSphere.radius=boundR*this.radius;
+      if(!frustum.intersectsSphere(_tmpSphere))return;
+
+      const dist=camera.position.distanceTo(_tmpSphere.center);
+      const screenPx=(boundR*this.radius*projFactor)/dist;
+
+      if(depth<QT.MAX_DEPTH&&screenPx>this.targetPx&&this.leaves.length<QT.MAX_LEAVES){
+        const x2=x*2,y2=y*2;
+        this.visit(face,depth+1,x2,y2,camera,frustum,camDir,projFactor);
+        this.visit(face,depth+1,x2+1,y2,camera,frustum,camDir,projFactor);
+        this.visit(face,depth+1,x2,y2+1,camera,frustum,camDir,projFactor);
+        this.visit(face,depth+1,x2+1,y2+1,camera,frustum,camDir,projFactor);
+        return;
+      }
+
+      if(this.leaves.length<QT.MAX_LEAVES){
+        this.leaves.push({face,depth,x,y,screenPx});
+      }
+    }
+
+    update(camera,viewportHeight){
+      this.frameId++;
+      const frustum=new THREE.Frustum();
+      const m=new THREE.Matrix4();
+      m.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(m);
+      const camDir=camera.position.clone().normalize();
+      const projFactor=viewportHeight/(2*Math.tan(camera.fov*Math.PI/360));
+
+      this.leaves.length=0;
+      for(let face=0;face<6;face++)this.visit(face,0,0,0,camera,frustum,camDir,projFactor);
+
+      if(this.leaves.length>QT.MAX_LEAVES*0.95)this.targetPx=Math.min(220,this.targetPx*1.08);
+      else if(this.leaves.length<QT.MAX_LEAVES*0.5&&this.targetPx>QT.BASE_TARGET)this.targetPx=Math.max(QT.BASE_TARGET,this.targetPx*0.97);
+
+      this.requests.length=0;
+      const needed=new Set();
+      let fallback=0;
+      for(const l of this.leaves){
+        const key=this.pageKey(l.face,l.depth,l.x,l.y);
+        needed.add(key);
+        if(!this.pageTable.has(key)){
+          this.requests.push({key,prio:l.screenPx});
+          fallback++;
+        }else{
+          this.slotUsed[this.pageTable.get(key)]=this.frameId;
+        }
+      }
+      this.neededSet=needed;
+
+      let sig=this.residencyVersion+':';
+      for(const l of this.leaves)sig+=((l.face<<17|l.depth<<14|l.y<<7|l.x).toString(36))+',';
+      if(sig!==this.lastSignature){
+        this.lastSignature=sig;
+        this.fillBuffers();
+      }
+
+      this.requests.sort((a,b)=>b.prio-a.prio);
+      let gen=0;
+      for(const r of this.requests){
+        if(gen>=VT.MAX_GEN_PER_FRAME)break;
+        if(this.pending.has(r.key))continue;
+        this.pending.add(r.key);
+        this.generatePage(r.key);
+        gen++;
+      }
+
+      this.stats={leaves:this.leaves.length,triangles:this.leaves.length*LEAF_TRI,fallback};
+    }
+
+    allocSlot(needed){
+      if(this.freeSlots.length)return this.freeSlots.pop();
+      let best=-1,bestScore=Infinity;
+      for(let i=0;i<this.slotPage.length;i++){
+        const k=this.slotPage[i];
+        if(k<0||needed.has(k))continue;
+        const level=(k>>14)&7;
+        const score=this.slotUsed[i]*16-level*4;
+        if(score<bestScore){bestScore=score;best=i;}
+      }
+      if(best<0)return -1;
+      this.pageTable.delete(this.slotPage[best]);
+      this.residencyVersion++;
+      return best;
+    }
+
+    generatePage(key){
+      const needed=this.neededSet;
+      const slot=this.allocSlot(needed);
+      this.pending.delete(key);
+      if(slot<0)return;
+      const face=(key>>17)&7,level=(key>>14)&7,y=(key>>7)&127,x=key&127;
+      const s=1/(1<<level);
+      const U=genMat.uniforms;
+      U.uFace.value=face;U.uU0.value=x*s;U.uV0.value=y*s;U.uSize.value=s;U.uLevel.value=level;
+      const sx=slot%VT.ATLAS_GRID,sy=Math.floor(slot/VT.ATLAS_GRID);
+      const ox=sx*VT.PAGE_SIZE,oy=sy*VT.PAGE_SIZE;
+      renderer.getViewport(_vpSave);
+      renderer.setScissorTest(true);
+      for(let pass=0;pass<2;pass++){
+        U.uPass.value=pass;
+        renderer.setRenderTarget(pass===0?atlasA:atlasN);
+        renderer.setScissor(ox,oy,VT.PAGE_SIZE,VT.PAGE_SIZE);
+        renderer.setViewport(ox,oy,VT.PAGE_SIZE,VT.PAGE_SIZE);
+        renderer.render(genScene,genCam);
+      }
+      renderer.setScissorTest(false);
+      renderer.setRenderTarget(null);
+      renderer.setViewport(_vpSave.x,_vpSave.y,_vpSave.z,_vpSave.w);
+      this.pageTable.set(key,slot);
+      this.slotPage[slot]=key;
+      this.slotUsed[slot]=this.frameId;
+      this.residencyVersion++;
+    }
+
+    pregen(){
+      let count=0;
+      for(let level=0;level<=VT.PREGEN_LEVELS;level++){
+        const n=1<<level;
+        for(let face=0;face<6;face++)
+          for(let y=0;y<n;y++)
+            for(let x=0;x<n;x++){
+              this.generatePage(this.pageKey(face,level,x,y));
+              count++;
+            }
+      }
+      log(`VT: пре-генерация ${count} страниц (уровни 0-${VT.PREGEN_LEVELS})`);
+    }
+
+    fillBuffers(){
+      const t0=performance.now();
+      let vOff=0,iOff=0;
+      for(const l of this.leaves){
+        const d=this.getLeafData(l.face,l.depth,l.x,l.y);
+        this.posArr.set(d.positions,vOff*3);
+        this.lodArr.set(d.lods,vOff);
+        this.uvArr.set(d.uvs,vOff*2);
+        const s=1/(1<<l.depth);
+        for(let v=0;v<LEAF_VERTS;v++){
+          this.uv0Arr[(vOff+v)*2]=l.x*s;
+          this.uv0Arr[(vOff+v)*2+1]=l.y*s;
+          this.uvSizeArr[vOff+v]=s;
+        }
+        const key=this.pageKey(l.face,l.depth,l.x,l.y);
+        const slot=this.pageTable.has(key)?this.pageTable.get(key):-1;
+        const sx=slot>=0?slot%VT.ATLAS_GRID:0;
+        const sy=slot>=0?Math.floor(slot/VT.ATLAS_GRID):0;
+        const res=slot>=0?1:0;
+        for(let v=0;v<LEAF_VERTS;v++){
+          const o=(vOff+v)*4;
+          this.pageArr[o]=sx;this.pageArr[o+1]=sy;this.pageArr[o+2]=res;this.pageArr[o+3]=l.face;
+        }
+        for(let k=0;k<LEAF_IDX.length;k++)this.idxArr[iOff+k]=LEAF_IDX[k]+vOff;
+        vOff+=LEAF_VERTS;
+        iOff+=LEAF_IDX.length;
+      }
+      for(const k in this.attrs)this.attrs[k].needsUpdate=true;
+      this.idxAttr.needsUpdate=true;
+      this.geo.setDrawRange(0,iOff);
+      this.lastRebuildMs=performance.now()-t0;
+    }
+  }
+
+  const nanite=new NaniteQuadtree(scene,tileMaterial);
+
+  // Фон: звёзды
+  (function(){
+    const N=3600,arr=new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const v=new THREE.Vector3().randomDirection().multiplyScalar(120);
+      arr.set([v.x,v.y,v.z],i*3);
+    }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));
+    scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xcfd8ff,size:.16,transparent:true,opacity:.95,depthWrite:false})));
+  })();
+
+  updateLoadingProgress(70,'Генерация планеты');
+
+  let planetRadius=1,minCamDist=1.5;
+  function applyPlanet(s){
+    const p=s.physics;
+    planetRadius=p.scale||1;
+    minCamDist=planetRadius*1.15;
+    shared.uRadius.value=planetRadius;
+    nanite.setPlanet(planetRadius);
+
+    shared.uSeed.value.set(p.seedOffset[0],p.seedOffset[1],p.seedOffset[2]);
+    shared.uSea.value=.40+Math.pow(p.ocean,1.3)*.2;
+    shared.uWater.value=p.ocean>.2?1:p.ocean/.2;
+    shared.uIceCaps.value=p.ice*1.5;
+    const lavaRaw=p.lava+p.fire*.5;
+    shared.uLava.value=lavaRaw>.55?(lavaRaw-.55)*2.2:0;
+    shared.uCraters.value=p.craters;
+
+    const crust=hexToRgb(s.palette.crust);
+    shared.uLandDry.value.set(crust[0],crust[1],crust[2]);
+    const cloud=hexToRgb(s.palette.cloud);
+    shared.uAtmoCol.value.set(cloud[0]*.7,cloud[1]*.7,cloud[2]*.7);
+
+    renderer.setScissorTest(false);
+    for(const rt of[atlasA,atlasN]){
+      renderer.setRenderTarget(rt);
+      renderer.clear(true,false,false);
+    }
+    renderer.setRenderTarget(null);
+    updateLoadingProgress(85,'Запекание текстур (VT pregen)');
+    nanite.pregen();
+
+    document.getElementById('jsonOut').value=generator.export(s);
+    log(`🌍 ${s.meta.typeName} · радиус=${planetRadius.toFixed(2)} · обитаемость=${Math.round(p.habitability)}%`);
+  }
+
+  function applyPlanetType(typeId){
+    try{
+      const settings=generator.generate(typeId,Math.floor(Math.random()*1000000));
+      applyPlanet(settings);
+      sel.value=typeId;
+    }catch(e){log('ОШИБКА: '+e.message);}
+  }
+
+  // --- UI ---
+  const sel=document.getElementById('preset');
+  const categories={};
+  PLANET_TYPES.forEach(t=>{
+    if(!categories[t.category])categories[t.category]=[];
+    categories[t.category].push(t);
+  });
+  for(const cat in categories){
+    const og=document.createElement('optgroup');og.label=cat;
+    categories[cat].forEach(t=>{
+      const o=document.createElement('option');o.value=t.id;o.textContent=t.name;og.appendChild(o);
+    });
+    sel.appendChild(og);
+  }
+  sel.value='full_random';
+  sel.addEventListener('change',()=>applyPlanetType(sel.value));
+  document.getElementById('rand').addEventListener('click',()=>{
+    const ids=PLANET_TYPES.filter(t=>t.id!=='full_random').map(t=>t.id);
+    applyPlanetType(ids[Math.floor(Math.random()*ids.length)]);
+  });
+  document.getElementById('fullRandom').addEventListener('click',()=>applyPlanetType('full_random'));
+  document.getElementById('copyJson').addEventListener('click',()=>{
+    const ta=document.getElementById('jsonOut');ta.select();
+    navigator.clipboard.writeText(ta.value).then(()=>log('JSON скопирован')).catch(()=>log('Ошибка копирования'));
+  });
+  document.getElementById('applyJson').addEventListener('click',()=>{
+    try{applyPlanet(generator.import(document.getElementById('jsonOut').value));log('Планета восстановлена');}
+    catch(e){log('ОШИБКА: '+e.message);}
+  });
+
+  const speedEl=document.getElementById('speed');
+  const vSpeed=document.getElementById('vSpeed');
+  speedEl.addEventListener('input',()=>{vSpeed.textContent=(+speedEl.value).toFixed(2);});
+
+  // --- Камера ---
+  let th=.6,ph=1.15,dist=6,tTh=th,tPh=ph,tD=dist,drag=false,px=0,py=0;
+  canvas.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;});
+  addEventListener('pointerup',()=>drag=false);
+  addEventListener('pointermove',e=>{if(!drag)return;
+    tTh-=(e.clientX-px)*.005;tPh=Math.min(Math.PI-.15,Math.max(.15,tPh-(e.clientY-py)*.005));px=e.clientX;py=e.clientY;});
+  canvas.addEventListener('wheel',e=>{e.preventDefault();
+    tD=Math.min(60,Math.max(minCamDist,tD*(1+e.deltaY*.001)));},{passive:false});
+
+  updateLoadingProgress(100,'Готово');
+  hideLoadingScreen();
+
+  // --- Цикл ---
+  let prev=performance.now(),frameCount=0,lastFpsUpdate=performance.now(),fps=60;
+  function frame(now){
+    requestAnimationFrame(frame);
+    const dt=Math.min(.05,(now-prev)/1000);prev=now;
+    shared.uCam.value.copy(camera.position);
+
+    th+=(tTh-th)*.08;ph+=(tPh-ph)*.08;dist+=(tD-dist)*.1;
+    camera.position.set(dist*Math.sin(ph)*Math.sin(th),dist*Math.cos(ph),dist*Math.sin(ph)*Math.cos(th));
+    camera.lookAt(0,0,0);
+
+    nanite.update(camera,innerHeight);
+
+    renderer.setRenderTarget(null);
+    renderer.clear(true,true,false);
+    renderer.render(scene,camera);
+
+    frameCount++;
+    if(now-lastFpsUpdate>1000){
+      fps=frameCount;frameCount=0;lastFpsUpdate=now;
+      document.getElementById('dbgFps').textContent=fps;
+      document.getElementById('dbgLeaves').textContent=nanite.stats.leaves;
+      document.getElementById('dbgTriangles').textContent=nanite.stats.triangles.toLocaleString();
+      document.getElementById('dbgPages').textContent=nanite.pageTable.size;
+      document.getElementById('dbgSlots').textContent=nanite.slotPage.length;
+      document.getElementById('dbgFallback').textContent=nanite.stats.fallback;
+      document.getElementById('dbgRebuild').textContent=nanite.lastRebuildMs.toFixed(1);
+    }
+  }
+
+  addEventListener('resize',()=>{
+    camera.aspect=innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  });
+
+  applyPlanetType('full_random');
+  log('INIT: Nanite + Virtual Textures запущены');
+  requestAnimationFrame(frame);
+}
+
+main();
+</script>
+</body>
+</html>
